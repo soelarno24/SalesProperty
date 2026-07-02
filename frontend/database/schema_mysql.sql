@@ -879,13 +879,6 @@ BEGIN
     WHERE id = OLD.project_id;
 END$$
 
-DELIMITER $$
-
-
--- =====================================================
--- TABLE COMMENTS (Documentation)
--- =====================================================
-
 -- Note: MySQL doesn't support COMMENT ON TABLE in the same way as PostgreSQL
 -- The following documentation is provided for reference:
 
