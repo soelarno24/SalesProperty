@@ -1,6 +1,6 @@
 -- =====================================================
 -- AGENT PROPERTI — SUPABASE DATABASE SCHEMA
--- PostgreSQL (Supabase)
+-- PostgreSQL (Supabase) - Fixed Table Order
 -- =====================================================
 
 -- =====================================================
@@ -142,56 +142,7 @@ CREATE INDEX idx_projects_status ON projects(status);
 
 
 -- =====================================================
--- 3. UNITS / INVENTORY
--- =====================================================
-
-CREATE TABLE unit_types (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    name VARCHAR(100) NOT NULL,
-    size_sqft INTEGER,
-    base_price DECIMAL(15,2),
-    dp_amount DECIMAL(15,2),
-    dp_percent DECIMAL(5,2),
-    total_count INTEGER DEFAULT 0,
-    available_count INTEGER DEFAULT 0
-);
-
-CREATE TABLE units (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    unit_type_id UUID REFERENCES unit_types(id) ON DELETE SET NULL,
-    block VARCHAR(50),
-    unit_number VARCHAR(50) NOT NULL,
-    house_type VARCHAR(100),
-    floor_area INTEGER,
-    floor_level INTEGER,
-    bedrooms INTEGER DEFAULT 1,
-    bathrooms INTEGER DEFAULT 1,
-    facing VARCHAR(50),
-    price DECIMAL(15,2) NOT NULL,
-    down_payment DECIMAL(15,2),
-    dp_percent DECIMAL(5,2),
-    status VARCHAR(20) DEFAULT 'Available' CHECK (status IN ('Available', 'Booked', 'Sold')),
-    booked_by_client_id UUID,
-    booked_date DATE,
-    booked_by_agent UUID REFERENCES users(id),
-    sold_date DATE,
-    booking_expires TIMESTAMP,
-    notes TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
-ALTER TABLE units ADD CONSTRAINT fk_units_client FOREIGN KEY (booked_by_client_id) REFERENCES clients(id) ON DELETE SET NULL;
-
-CREATE INDEX idx_units_project ON units(project_id);
-CREATE INDEX idx_units_status ON units(status);
-CREATE INDEX idx_units_price ON units(price);
-
-
--- =====================================================
--- 4. CLIENTS / CRM
+-- 3. CLIENTS / CRM (MUST BE BEFORE UNITS)
 -- =====================================================
 
 CREATE TABLE clients (
@@ -209,7 +160,7 @@ CREATE TABLE clients (
     status VARCHAR(20) DEFAULT 'New Lead' CHECK (status IN ('New Lead', 'Follow-up', 'Site Visit', 'Negotiation', 'Booked', 'Closed', 'Lost')),
     assigned_agent_id UUID REFERENCES users(id) ON DELETE SET NULL,
     project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
-    unit_id UUID REFERENCES units(id) ON DELETE SET NULL,
+    unit_id UUID,
     last_contact TIMESTAMP,
     notes TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
@@ -241,6 +192,55 @@ CREATE INDEX idx_clients_agent ON clients(assigned_agent_id);
 CREATE INDEX idx_clients_status ON clients(status);
 CREATE INDEX idx_clients_potential ON clients(potential);
 CREATE INDEX idx_reminders_date ON follow_up_reminders(reminder_date);
+
+
+-- =====================================================
+-- 4. UNITS / INVENTORY
+-- =====================================================
+
+CREATE TABLE unit_types (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    size_sqft INTEGER,
+    base_price DECIMAL(15,2),
+    dp_amount DECIMAL(15,2),
+    dp_percent DECIMAL(5,2),
+    total_count INTEGER DEFAULT 0,
+    available_count INTEGER DEFAULT 0
+);
+
+CREATE TABLE units (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    unit_type_id UUID REFERENCES unit_types(id) ON DELETE SET NULL,
+    block VARCHAR(50),
+    unit_number VARCHAR(50) NOT NULL,
+    house_type VARCHAR(100),
+    floor_area INTEGER,
+    floor_level INTEGER,
+    bedrooms INTEGER DEFAULT 1,
+    bathrooms INTEGER DEFAULT 1,
+    facing VARCHAR(50),
+    price DECIMAL(15,2) NOT NULL,
+    down_payment DECIMAL(15,2),
+    dp_percent DECIMAL(5,2),
+    status VARCHAR(20) DEFAULT 'Available' CHECK (status IN ('Available', 'Booked', 'Sold')),
+    booked_by_client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+    booked_date DATE,
+    booked_by_agent UUID REFERENCES users(id),
+    sold_date DATE,
+    booking_expires TIMESTAMP,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+ALTER TABLE clients ADD CONSTRAINT fk_clients_unit FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_units_project ON units(project_id);
+CREATE INDEX idx_units_status ON units(status);
+CREATE INDEX idx_units_price ON units(price);
 
 
 -- =====================================================
@@ -492,13 +492,7 @@ CREATE TABLE system_settings (
 
 
 -- =====================================================
--- 11. SEED DATA
--- =====================================================
-
--- Note: Run seed after creating tables via SQL editor in Supabase Dashboard
-
--- =====================================================
--- VIEWS FOR DASHBOARD
+-- 11. VIEWS FOR DASHBOARD
 -- =====================================================
 
 CREATE VIEW v_team_performance AS
@@ -574,3 +568,24 @@ WHERE c.potential = 'Hot'
   AND c.status NOT IN ('Closed', 'Lost')
   AND c.last_contact < NOW() - INTERVAL '48 hours'
 ORDER BY c.last_contact ASC;
+
+
+-- =====================================================
+-- 12. SEED DATA
+-- =====================================================
+
+INSERT INTO teams (id, name, description) VALUES
+    (gen_random_uuid(), 'System Admin', 'Administrators');
+
+INSERT INTO users (id, name, email, phone, password_hash, role, status, team_id) VALUES
+    (gen_random_uuid(), 'Agent Properti Admin', 'admin@agentproperti.id', '+62 812 0000 1111', 
+     '$2b$12$placeholder_hash_replace_with_real_bcrypt', 'Admin', 'Active', 
+     (SELECT id FROM teams LIMIT 1));
+
+INSERT INTO system_settings (setting_key, setting_value, setting_type, description) VALUES
+    ('app_name', 'Agent Properti', 'string', 'Application name'),
+    ('currency', 'USD', 'string', 'Default currency'),
+    ('date_format', 'DD/MM/YYYY', 'string', 'Date display format'),
+    ('booking_hold_hours', '24', 'number', 'Hours to hold a booked unit'),
+    ('password_min_length', '8', 'number', 'Minimum password length'),
+    ('session_timeout_default', '30', 'number', 'Default session timeout in minutes');
