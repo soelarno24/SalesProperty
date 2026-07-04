@@ -1,30 +1,29 @@
-import { useState, useEffect, useRef } from 'react';
-import Icon from './Icon';
+import { useState, useEffect, useRef, useCallback } from 'react'
+import Icon from './Icon'
 
 interface Developer {
-  id: string;
-  name: string;
-  initial: string;
-  established: string;
-  location: string;
-  contactName: string;
-  contactEmail: string;
-  contactPhone: string;
-  projects: number;
-  projectProgress: number;
-  legalStatus: 'Verified Institutional' | 'Review Pending';
-  // Extended details
-  taxId: string;
-  businessLicense: string;
-  licenseExpiry: string;
-  insuranceCert: string;
-  insuranceExpiry: string;
-  totalUnits: number;
-  completedProjects: number;
-  onTimeDelivery: number;
-  qualityScore: number;
-  lastAuditDate: string;
-  auditStatus: 'Passed' | 'Pending' | 'Failed';
+  id: string
+  name: string
+  initial: string
+  established: string
+  location: string
+  contactName: string
+  contactEmail: string
+  contactPhone: string
+  projects: number
+  projectProgress: number
+  legalStatus: 'Verified Institutional' | 'Review Pending'
+  taxId: string
+  businessLicense: string
+  licenseExpiry: string
+  insuranceCert: string
+  insuranceExpiry: string
+  totalUnits: number
+  completedProjects: number
+  onTimeDelivery: number
+  qualityScore: number
+  lastAuditDate: string
+  auditStatus: 'Passed' | 'Pending' | 'Failed'
 }
 
 const initialDevelopers: Developer[] = [
@@ -365,10 +364,10 @@ export default function DeveloperManagementPage() {
   };
 
   // Modal Components
-  const ModalBackdrop = ({ children, onClose, wide = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean }) => (
+  const ModalBackdrop = useCallback(({ children, onClose, wide = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean }) => (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/40 backdrop-blur-sm animate-fade-in overflow-y-auto"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
         ref={modalRef}
@@ -378,9 +377,9 @@ export default function DeveloperManagementPage() {
         {children}
       </div>
     </div>
-  );
+  ), [modalRef])
 
-  const FormInput = ({
+  const FormInput = useCallback(({
     label, name, type = 'text', placeholder, value, onChange, error, disabled = false,
   }: {
     label: string; name: string; type?: string; placeholder?: string; value: string | number; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; error?: string; disabled?: boolean;
@@ -395,9 +394,9 @@ export default function DeveloperManagementPage() {
       />
       {error && <p className="text-xs text-error font-medium">{error}</p>}
     </div>
-  );
+  ), [])
 
-  const FormSelect = ({
+  const FormSelect = useCallback(({
     label, name, value, onChange, options,
   }: {
     label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; options: { value: string; label: string }[];
@@ -408,7 +407,7 @@ export default function DeveloperManagementPage() {
         {options.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
       </select>
     </div>
-  );
+  ), [])
 
   const InfoRow = ({ label, value, highlight = false }: { label: string; value: string | number; highlight?: boolean }) => (
     <div className="flex justify-between items-center py-2 border-b border-outline-variant/10 last:border-0">

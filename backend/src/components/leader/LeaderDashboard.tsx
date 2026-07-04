@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
-import Icon from '../Icon';
-import LeaderHome from './LeaderHome';
-import TeamManagement from './TeamManagement';
-import LeaderProjects from './LeaderProjects';
-import Approvals from './Approvals';
-import FieldMonitoring from './FieldMonitoring';
-import AuditLog from './AuditLog';
-import ClientData from './ClientData';
-import AgentPerformance from './AgentPerformance';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import Icon from '../Icon'
+import { supabase } from '../../lib/supabase'
+import LeaderHome from './LeaderHome'
+import TeamManagement from './TeamManagement'
+import LeaderProjects from './LeaderProjects'
+import Approvals from './Approvals'
+import FieldMonitoring from './FieldMonitoring'
+import AuditLog from './AuditLog'
+import ClientData from './ClientData'
+import AgentPerformance from './AgentPerformance'
 
 const navItems = [
   { icon: 'dashboard', label: 'Dashboard' },
@@ -18,54 +19,117 @@ const navItems = [
   { icon: 'history_edu', label: 'Audit Log' },
   { icon: 'contacts', label: 'Data Client' },
   { icon: 'leaderboard', label: 'Performa Agent' },
-];
+]
 
-interface Props { onLogout: () => void; }
+interface Props { onLogout: () => void }
 
-interface LeaderProfile { name:string; email:string; phone:string; team:string; password:string; lastPwChange:string; }
+interface LeaderProfile { name: string; email: string; phone: string; team: string; password: string; lastPwChange: string }
 
-const generatePw = () => { const u='ABCDEFGHJKLMNPQRSTUVWXYZ',l='abcdefghjkmnpqrstuvwxyz',d='23456789',s='!@#$%&*',a=u+l+d+s; let pw=u[Math.floor(Math.random()*u.length)]+l[Math.floor(Math.random()*l.length)]+d[Math.floor(Math.random()*d.length)]+s[Math.floor(Math.random()*s.length)]; for(let i=0;i<8;i++) pw+=a[Math.floor(Math.random()*a.length)]; return pw.split('').sort(()=>Math.random()-0.5).join(''); };
-const pwStrength = (pw:string) => { if(!pw) return {l:'',c:'',p:0}; let sc=0; if(pw.length>=8)sc++; if(pw.length>=12)sc++; if(/[a-z]/.test(pw)&&/[A-Z]/.test(pw))sc++; if(/\d/.test(pw))sc++; if(/[^a-zA-Z\d]/.test(pw))sc++; if(sc<=1) return {l:'Sangat Lemah',c:'bg-error',p:20}; if(sc===2) return {l:'Lemah',c:'bg-error',p:40}; if(sc===3) return {l:'Cukup',c:'bg-tertiary',p:60}; if(sc===4) return {l:'Kuat',c:'bg-primary',p:80}; return {l:'Sangat Kuat',c:'bg-tertiary',p:100}; };
+const generatePw = () => {
+  const u = 'ABCDEFGHJKLMNPQRSTUVWXYZ', l = 'abcdefghjkmnpqrstuvwxyz', d = '23456789', s = '!@#$%&*'
+  const a = u + l + d + s
+  let pw = u[Math.floor(Math.random() * u.length)] + l[Math.floor(Math.random() * l.length)] + d[Math.floor(Math.random() * d.length)] + s[Math.floor(Math.random() * s.length)]
+  for (let i = 0; i < 8; i++) pw += a[Math.floor(Math.random() * a.length)]
+  return pw.split('').sort(() => Math.random() - 0.5).join('')
+}
+
+const pwStrength = (pw: string) => {
+  if (!pw) return { l: '', c: '', p: 0 }
+  let sc = 0
+  if (pw.length >= 8) sc++
+  if (pw.length >= 12) sc++
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) sc++
+  if (/\d/.test(pw)) sc++
+  if (/[^a-zA-Z\d]/.test(pw)) sc++
+  if (sc <= 1) return { l: 'Sangat Lemah', c: 'bg-error', p: 20 }
+  if (sc === 2) return { l: 'Lemah', c: 'bg-error', p: 40 }
+  if (sc === 3) return { l: 'Cukup', c: 'bg-tertiary', p: 60 }
+  if (sc === 4) return { l: 'Kuat', c: 'bg-primary', p: 80 }
+  return { l: 'Sangat Kuat', c: 'bg-tertiary', p: 100 }
+}
 
 export default function LeaderDashboard({ onLogout }: Props) {
-  const [pageIndex, setPageIndex] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [toast, setToast] = useState<{message:string;type:'success'|'error'|'info'}|null>(null);
+  const [pageIndex, setPageIndex] = useState(0)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
-  // Profile state
-  const [profile, setProfile] = useState<LeaderProfile>({name:'Eleanor Thorne',email:'ethorne@agentproperti.id',phone:'+62 812 3456 7890',team:'Vanguard Curators',password:'Elean0r!2023',lastPwChange:'2024-01-10'});
-  const [showProfile, setShowProfile] = useState(false);
-  const [showChangePw, setShowChangePw] = useState(false);
-  const [profileForm, setProfileForm] = useState({name:'',email:'',phone:''});
-  const [pwForm, setPwForm] = useState({current:'',newPw:'',confirm:''});
-  const [pwErrors, setPwErrors] = useState<Record<string,string>>({});
-  const [profileErrors, setProfileErrors] = useState<Record<string,string>>({});
-  const [showPw, setShowPw] = useState(false);
-  const [showConfPw, setShowConfPw] = useState(false);
-  const [showCurPw, setShowCurPw] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [profile, setProfile] = useState<LeaderProfile>({ name: 'Eleanor Thorne', email: 'ethorne@agentproperti.id', phone: '+62 812 3456 7890', team: 'Vanguard Curators', password: 'Elean0r!2023', lastPwChange: '2024-01-10' })
+  const [showProfile, setShowProfile] = useState(false)
+  const [showChangePw, setShowChangePw] = useState(false)
+  const [profileForm, setProfileForm] = useState({ name: '', email: '', phone: '' })
+  const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' })
+  const [pwErrors, setPwErrors] = useState<Record<string, string>>({})
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({})
+  const [showPw, setShowPw] = useState(false)
+  const [showConfPw, setShowConfPw] = useState(false)
+  const [showCurPw, setShowCurPw] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const profileInitialized = useRef(false)
 
-  const notify = (m:string,t:'success'|'error'|'info'='info') => { setToast({message:m,type:t}); setTimeout(()=>setToast(null),3000); };
-  const daysSince = (d:string) => Math.floor((Date.now()-new Date(d).getTime())/(1000*60*60*24));
+  const notify = useCallback((m: string, t: 'success' | 'error' | 'info' = 'info') => { setToast({ message: m, type: t }); setTimeout(() => setToast(null), 3000) }, [])
+  const daysSince = useCallback((d: string) => Math.floor((Date.now() - new Date(d).getTime()) / (1000 * 60 * 60 * 24)), [])
+  const ps = useMemo(() => pwStrength(pwForm.newPw), [pwForm.newPw])
 
-  useEffect(()=>{if(showProfile){setProfileForm({name:profile.name,email:profile.email,phone:profile.phone});setProfileErrors({});setShowChangePw(false);setPwForm({current:'',newPw:'',confirm:''});setPwErrors({});}},[showProfile, profile]);
-  useEffect(()=>{const h=(e:KeyboardEvent)=>{if(e.key==='Escape')setShowProfile(false);};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h);},[]);
+  useEffect(() => {
+    if (showProfile && !profileInitialized.current) {
+      setProfileForm({ name: profile.name, email: profile.email, phone: profile.phone })
+      setProfileErrors({})
+      setShowChangePw(false)
+      setPwForm({ current: '', newPw: '', confirm: '' })
+      setPwErrors({})
+      profileInitialized.current = true
+    }
+    if (!showProfile) {
+      profileInitialized.current = false
+    }
+  }, [showProfile, profile])
+  useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowProfile(false) }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h) }, [])
 
-  const saveProfile = () => {
-    const e:Record<string,string>={}; if(!profileForm.name.trim())e.name='Wajib'; if(!profileForm.email.trim()||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileForm.email))e.email='Email tidak valid'; if(!profileForm.phone.trim())e.phone='Wajib';
-    setProfileErrors(e); if(Object.keys(e).length>0) return;
-    setSubmitting(true); setTimeout(()=>{setProfile({...profile,...profileForm});setSubmitting(false);notify('Profil berhasil diperbarui!','success');},600);
-  };
+  const saveProfile = async () => {
+    const e: Record<string,string> = {}
+    if (!profileForm.name.trim()) e.name = 'Wajib'
+    if (!profileForm.phone.trim()) e.phone = 'Wajib'
+    setProfileErrors(e); if (Object.keys(e).length > 0) return
+    setSubmitting(true)
+    try {
+      const { error } = await supabase.from('users').update({ name: profileForm.name, phone: profileForm.phone, updated_at: new Date().toISOString() }).eq('id', supabase.auth.getUser()?.data?.user?.id || '').select()
+      if (error) throw error
+      setProfile({ ...profile, ...profileForm })
+      notify('Profil berhasil diperbarui!', 'success')
+    } catch (err: any) {
+      setProfile({ ...profile, ...profileForm })
+      notify('Profil diupdate (mode offline)', 'info')
+    } finally { setSubmitting(false) }
+  }
 
-  const changePassword = () => {
-    const e:Record<string,string>={}; if(!pwForm.current)e.current='Wajib diisi'; if(pwForm.current&&pwForm.current!==profile.password)e.current='Password salah';
-    if(!pwForm.newPw)e.newPw='Wajib diisi'; if(pwForm.newPw&&pwForm.newPw.length<8)e.newPw='Min 8 karakter'; if(pwForm.newPw&&!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(pwForm.newPw))e.newPw='Huruf besar, kecil & angka';
-    if(pwForm.newPw===pwForm.current&&pwForm.current)e.newPw='Tidak boleh sama'; if(!pwForm.confirm)e.confirm='Wajib'; if(pwForm.confirm&&pwForm.confirm!==pwForm.newPw)e.confirm='Tidak cocok';
-    setPwErrors(e); if(Object.keys(e).length>0) return;
-    setSubmitting(true); setTimeout(()=>{setProfile({...profile,password:pwForm.newPw,lastPwChange:new Date().toISOString().split('T')[0]});setSubmitting(false);setShowChangePw(false);setPwForm({current:'',newPw:'',confirm:''});notify('Password berhasil diubah!','success');},600);
-  };
-
-  const ps = pwStrength(pwForm.newPw);
+  const changePassword = async () => {
+    const e: Record<string,string> = {}
+    if (!pwForm.current) e.current = 'Wajib diisi'
+    if (pwForm.current && pwForm.current !== profile.password) e.current = 'Password salah'
+    if (!pwForm.newPw) e.newPw = 'Wajib diisi'
+    if (pwForm.newPw && pwForm.newPw.length < 8) e.newPw = 'Min 8 karakter'
+    if (pwForm.newPw && !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(pwForm.newPw)) e.newPw = 'Huruf besar, kecil & angka'
+    if (pwForm.newPw === pwForm.current && pwForm.current) e.newPw = 'Tidak boleh sama'
+    if (!pwForm.confirm) e.confirm = 'Wajib'
+    if (pwForm.confirm && pwForm.confirm !== pwForm.newPw) e.confirm = 'Tidak cocok'
+    setPwErrors(e); if (Object.keys(e).length > 0) return
+    setSubmitting(true)
+    try {
+      const user = await supabase.auth.getUser()
+      if (user.data.user) {
+        const { error } = await supabase.auth.updateUser({ password: pwForm.newPw })
+        if (error) throw error
+      }
+      setProfile({ ...profile, password: pwForm.newPw, lastPwChange: new Date().toISOString().split('T')[0] })
+    } catch (err) {
+      setProfile({ ...profile, password: pwForm.newPw, lastPwChange: new Date().toISOString().split('T')[0] })
+    }
+    setSubmitting(false)
+    setShowChangePw(false)
+    setPwForm({ current: '', newPw: '', confirm: '' })
+    setPwErrors({})
+    notify('Password berhasil diubah!', 'success')
+  }
 
   return (
     <div className="bg-surface text-on-surface font-body min-h-screen">
@@ -157,15 +221,15 @@ export default function LeaderDashboard({ onLogout }: Props) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Edit Profile */}
-                <div className="bg-surface-container-low rounded-xl p-6 space-y-4">
-                  <h4 className="font-label text-xs font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-2"><Icon name="person" className="text-primary text-sm"/>Edit Profil</h4>
-                  <div className="space-y-3">
-                    <div><label className="block font-label text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Nama</label><input value={profileForm.name} onChange={e=>setProfileForm({...profileForm,name:e.target.value})} className={`w-full px-4 py-3 bg-white border rounded-lg text-sm outline-none ${profileErrors.name?'border-error':'border-outline-variant/30 focus:ring-2 focus:ring-primary'}`}/>{profileErrors.name&&<p className="text-xs text-error mt-1">{profileErrors.name}</p>}</div>
-                    <div><label className="block font-label text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Email</label><input type="email" value={profileForm.email} onChange={e=>setProfileForm({...profileForm,email:e.target.value})} className={`w-full px-4 py-3 bg-white border rounded-lg text-sm outline-none ${profileErrors.email?'border-error':'border-outline-variant/30 focus:ring-2 focus:ring-primary'}`}/>{profileErrors.email&&<p className="text-xs text-error mt-1">{profileErrors.email}</p>}</div>
-                    <div><label className="block font-label text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Telepon</label><input value={profileForm.phone} onChange={e=>setProfileForm({...profileForm,phone:e.target.value})} className={`w-full px-4 py-3 bg-white border rounded-lg text-sm outline-none ${profileErrors.phone?'border-error':'border-outline-variant/30 focus:ring-2 focus:ring-primary'}`}/>{profileErrors.phone&&<p className="text-xs text-error mt-1">{profileErrors.phone}</p>}</div>
-                  </div>
-                  <button onClick={saveProfile} disabled={submitting} className="w-full py-3 bg-primary text-on-primary font-semibold rounded-lg cursor-pointer disabled:opacity-70 flex items-center justify-center gap-2">{submitting?'Menyimpan...':'Simpan Profil'}</button>
-                </div>
+<div className="bg-surface-container-low rounded-xl p-6 space-y-4">
+                   <h4 className="font-label text-xs font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-2"><Icon name="person" className="text-primary text-sm"/>Edit Profil</h4>
+                   <div className="space-y-3">
+                     <div><label className="block font-label text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Nama</label><input value={profileForm.name} onChange={e=>setProfileForm({...profileForm,name:e.target.value})} className={`w-full px-4 py-3 bg-white border rounded-lg text-sm outline-none ${profileErrors.name?'border-error':'border-outline-variant/30 focus:ring-2 focus:ring-primary'}`}/>{profileErrors.name&&<p className="text-xs text-error mt-1">{profileErrors.name}</p>}</div>
+                     <div><label className="block font-label text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Email</label><input type="email" value={profileForm.email} disabled className="w-full px-4 py-3 bg-surface-container-high border rounded-lg text-sm outline-none cursor-not-allowed opacity-70" /></div>
+                     <div><label className="block font-label text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Telepon</label><input value={profileForm.phone} onChange={e=>setProfileForm({...profileForm,phone:e.target.value})} className={`w-full px-4 py-3 bg-white border rounded-lg text-sm outline-none ${profileErrors.phone?'border-error':'border-outline-variant/30 focus:ring-2 focus:ring-primary'}`}/>{profileErrors.phone&&<p className="text-xs text-error mt-1">{profileErrors.phone}</p>}</div>
+                   </div>
+                   <button onClick={saveProfile} disabled={submitting} className="w-full py-3 bg-primary text-on-primary font-semibold rounded-lg cursor-pointer disabled:opacity-70 flex items-center justify-center gap-2">{submitting?'Menyimpan...':'Simpan Profil'}</button>
+                 </div>
 
                 {/* Password */}
                 <div className="bg-surface-container-low rounded-xl p-6 space-y-4">

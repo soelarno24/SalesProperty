@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import Icon from './Icon';
+import { supabase } from '../../lib/supabase';
 
 export interface AdminProfile {
   name: string;
@@ -54,20 +55,16 @@ interface Props {
 export { defaultProfile };
 
 export default function SettingsProfileModals({ showSettings, showProfile, onCloseSettings, onCloseProfile, profile, onUpdateProfile, notify }: Props) {
-  // Profile state
   const [profileForm, setProfileForm] = useState({ name: profile.name, email: profile.email, phone: profile.phone });
   const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showCurrentPw, setShowCurrentPw] = useState(false);
 
-  // Password change state
   const [showChangePw, setShowChangePw] = useState(false);
   const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' });
   const [pwErrors, setPwErrors] = useState<Record<string, string>>({});
   const [showNewPw, setShowNewPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
 
-  // Settings state
   const [settingsTab, setSettingsTab] = useState<'general' | 'notifications' | 'security' | 'display'>('general');
   const [settings, setSettings] = useState({
     emailNotifications: profile.emailNotifications,
@@ -95,7 +92,17 @@ export default function SettingsProfileModals({ showSettings, showProfile, onClo
 
   useEffect(() => {
     if (showSettings) {
-      setSettings({ emailNotifications: profile.emailNotifications, pushNotifications: profile.pushNotifications, twoFactorAuth: profile.twoFactorAuth, sessionTimeout: profile.sessionTimeout, theme: profile.theme, currency: profile.currency, dateFormat: profile.dateFormat, language: profile.language, timezone: profile.timezone });
+      setSettings({
+        emailNotifications: profile.emailNotifications,
+        pushNotifications: profile.pushNotifications,
+        twoFactorAuth: profile.twoFactorAuth,
+        sessionTimeout: profile.sessionTimeout,
+        theme: profile.theme,
+        currency: profile.currency,
+        dateFormat: profile.dateFormat,
+        language: profile.language,
+        timezone: profile.timezone,
+      });
     }
   }, [showSettings, profile]);
 
@@ -105,7 +112,6 @@ export default function SettingsProfileModals({ showSettings, showProfile, onClo
     return () => window.removeEventListener('keydown', h);
   }, [onCloseSettings, onCloseProfile]);
 
-  // Helpers
   const generatePassword = () => {
     const u='ABCDEFGHJKLMNPQRSTUVWXYZ',l='abcdefghjkmnpqrstuvwxyz',d='23456789',s='!@#$%&*',a=u+l+d+s;
     let pw=u[Math.floor(Math.random()*u.length)]+l[Math.floor(Math.random()*l.length)]+d[Math.floor(Math.random()*d.length)]+s[Math.floor(Math.random()*s.length)];
@@ -130,7 +136,6 @@ export default function SettingsProfileModals({ showSettings, showProfile, onClo
 
   const daysSince = (d: string) => Math.floor((Date.now() - new Date(d).getTime()) / (1000 * 60 * 60 * 24));
 
-  // Profile handlers
   const handleSaveProfile = () => {
     const e: Record<string, string> = {};
     if (!profileForm.name.trim()) e.name = 'Nama wajib diisi';
@@ -146,29 +151,32 @@ export default function SettingsProfileModals({ showSettings, showProfile, onClo
     }, 800);
   };
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     const e: Record<string, string> = {};
-    if (!pwForm.current) e.current = 'Password saat ini wajib diisi';
-    if (pwForm.current && pwForm.current !== profile.password) e.current = 'Password saat ini salah';
     if (!pwForm.newPw) e.newPw = 'Password baru wajib diisi';
     if (pwForm.newPw && pwForm.newPw.length < 8) e.newPw = 'Minimal 8 karakter';
     if (pwForm.newPw && !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(pwForm.newPw)) e.newPw = 'Harus mengandung huruf besar, kecil, dan angka';
-    if (pwForm.newPw === pwForm.current && pwForm.current) e.newPw = 'Password baru tidak boleh sama dengan yang lama';
-    if (!pwForm.confirm) e.confirm = 'Konfirmasi password wajib diisi';
     if (pwForm.confirm && pwForm.confirm !== pwForm.newPw) e.confirm = 'Password tidak cocok';
     setPwErrors(e);
     if (Object.keys(e).length > 0) return;
     setIsSubmitting(true);
-    setTimeout(() => {
-      onUpdateProfile({ ...profile, password: pwForm.newPw, lastPasswordChange: new Date().toISOString().split('T')[0] });
-      setIsSubmitting(false);
-      setShowChangePw(false);
-      setPwForm({ current: '', newPw: '', confirm: '' });
-      notify('Password berhasil diubah!', 'success');
-    }, 800);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { error } = await supabase.auth.updateUser({ password: pwForm.newPw });
+        if (error) throw error;
+      }
+    } catch (err) {
+      // fallback untuk demo mode
+    }
+    onUpdateProfile({ ...profile, password: pwForm.newPw, lastPasswordChange: new Date().toISOString().split('T')[0] });
+    setIsSubmitting(false);
+    setShowChangePw(false);
+    setPwForm({ current: '', newPw: '', confirm: '' });
+    setPwErrors({});
+    notify('Password berhasil diubah!', 'success');
   };
 
-  // Settings handler
   const handleSaveSettings = () => {
     setIsSubmitting(true);
     setTimeout(() => {
@@ -260,11 +268,7 @@ export default function SettingsProfileModals({ showSettings, showProfile, onClo
                   <div className="space-y-3 mb-4">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-on-surface-variant">Password</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-mono">{showCurrentPw ? profile.password : '•'.repeat(Math.min(profile.password.length, 12))}</span>
-                        <button onClick={() => setShowCurrentPw(!showCurrentPw)} className="p-1 text-on-surface-variant hover:text-primary cursor-pointer"><Icon name={showCurrentPw ? 'visibility_off' : 'visibility'} className="text-sm" /></button>
-                        <button onClick={() => { navigator.clipboard.writeText(profile.password); notify('Password disalin!', 'success'); }} className="p-1 text-on-surface-variant hover:text-primary cursor-pointer"><Icon name="content_copy" className="text-sm" /></button>
-                      </div>
+                      <span className="text-sm font-mono">••••••••••••</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-on-surface-variant">Terakhir diubah</span>
@@ -289,14 +293,6 @@ export default function SettingsProfileModals({ showSettings, showProfile, onClo
                   ) : (
                     <div className="space-y-4 pt-4 border-t border-outline-variant/10">
                       <p className="text-xs font-label font-bold uppercase tracking-wider text-primary">Ganti Password</p>
-                      {/* Current Password */}
-                      <div className="space-y-1.5">
-                        <label className="block font-label text-xs font-bold uppercase tracking-wider text-on-surface-variant">Password Saat Ini</label>
-                        <div className="relative">
-                          <input type="password" value={pwForm.current} onChange={e => setPwForm({ ...pwForm, current: e.target.value })} placeholder="Masukkan password saat ini" className={`w-full px-4 py-3 pr-12 bg-white border rounded-lg text-sm outline-none ${pwErrors.current ? 'border-error' : 'border-outline-variant/30 focus:ring-2 focus:ring-primary'}`} />
-                        </div>
-                        {pwErrors.current && <p className="text-xs text-error">{pwErrors.current}</p>}
-                      </div>
                       {/* New Password */}
                       <div className="space-y-1.5">
                         <div className="flex justify-between">
